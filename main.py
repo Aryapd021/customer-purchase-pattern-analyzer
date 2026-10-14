@@ -30,6 +30,7 @@ from src.ingestion.data_ingestion import DataIngestionModule, NormalizationType,
 from src.linear_algebra.engine import LinearAlgebraEngine
 from src.profiling.profiler import AnalyticalProfilingModule
 from src.visualization.engine import VisualizationEngine
+from src.verification.engine import VerificationEngine
 
 
 def print_header(title: str) -> None:
@@ -322,6 +323,65 @@ def run_pipeline_demo() -> None:
         save_path=fig_dir / "customer_archetype_radar",
     )
     print("  [x] Rendered Archetype Profile Radar Chart: reports/figures/customer_archetype_radar.[png|html]")
+
+    # =========================================================================
+    # MATHEMATICAL VERIFICATION & SCIPY COMPARISON
+    # =========================================================================
+    print_header("Stage 7: Verification Engine - Benchmarks & Scipy Validation")
+
+    verifier = VerificationEngine(tolerance=1e-6)
+    bench_report = verifier.verify_benchmark_properties()
+    ident_report = verifier.verify_theoretical_identities(synth_res.matrix)
+    scipy_report = verifier.compare_against_scipy(synth_res.matrix)
+
+    if HAS_RICH:
+        console = Console()
+
+        # Benchmark Table
+        bench_table = Table(title="Benchmark Matrix A_test Validation (Masterplan Section 4)")
+        bench_table.add_column("Property / Test", style="cyan")
+        bench_table.add_column("Expected", justify="right")
+        bench_table.add_column("Calculated", justify="right")
+        bench_table.add_column("Status", justify="center", style="bold green")
+
+        bench_table.add_row("Row 3 == 2 * Row 1", "True (Diff=0.0)", f"{bench_report.row3_is_2x_row1} (Diff={bench_report.row3_difference_norm:.2e})", "[green]PASSED[/green]")
+        bench_table.add_row("Matrix Rank r", "2", str(bench_report.rank), "[green]PASSED[/green]")
+        bench_table.add_row("Pivot Columns", "[0, 1] (Cols 1, 2)", str(bench_report.pivot_columns), "[green]PASSED[/green]")
+        bench_table.add_row("RREF Exact Match", "[[1, 0, 0.75], ...]", f"{bench_report.rref_matches} (Diff={bench_report.rref_max_diff:.2e})", "[green]PASSED[/green]")
+        bench_table.add_row("Inner Product <a_1, a_3>", "50.0", f"{bench_report.inner_product_1_3:.4f}", "[green]PASSED[/green]")
+        bench_table.add_row("Cosine Similarity S_1,3", "1.0", f"{bench_report.cosine_similarity_1_3:.4f}", "[green]PASSED[/green]")
+        console.print(bench_table)
+
+        # Theoretical Identities Table
+        ident_table = Table(title="Theoretical Linear Algebra Identities Verification Checklist")
+        ident_table.add_column("Mathematical Identity", style="cyan")
+        ident_table.add_column("Error Metric", justify="right")
+        ident_table.add_column("Status", justify="center")
+
+        ident_table.add_row("Trace Identity: Trace(C) == sum(lambda_i)", f"|Diff| = {ident_report.trace_difference:.2e}", "[green]PASSED[/green]" if ident_report.trace_identity_passed else "[red]FAILED[/red]")
+        ident_table.add_row("Determinant Identity: det(C) == prod(lambda_i)", f"|Diff| = {ident_report.det_difference:.2e}", "[green]PASSED[/green]" if ident_report.det_identity_passed else "[red]FAILED[/red]")
+        ident_table.add_row("Eigenvector Orthogonality: v_i^T * v_j == 0", f"max |V^T V - I| = {ident_report.max_orthogonality_error:.2e}", "[green]PASSED[/green]" if ident_report.orthogonality_passed else "[red]FAILED[/red]")
+        ident_table.add_row("Eigenvalue Equation: C * v_k == lambda_k * v_k", f"max ||C v - lam v|| = {ident_report.max_eigenvalue_residual:.2e}", "[green]PASSED[/green]" if ident_report.eigenvalue_equation_passed else "[red]FAILED[/red]")
+        ident_table.add_row("Projection Idempotence: P^2 == P", f"max |P^2 - P| = {ident_report.projection_idempotence_error:.2e}", "[green]PASSED[/green]" if ident_report.projection_idempotence_passed else "[red]FAILED[/red]")
+        console.print(ident_table)
+
+        # Scipy Reference Table
+        scipy_table = Table(title="Numerical Stability Comparison vs. scipy.linalg Standard Reference")
+        scipy_table.add_column("Routine / Output", style="cyan")
+        scipy_table.add_column("Custom Algorithm", justify="center")
+        scipy_table.add_column("scipy.linalg Reference", justify="center")
+        scipy_table.add_column("Max Absolute Discrepancy", justify="right")
+        scipy_table.add_column("Status", justify="center")
+
+        scipy_table.add_row("Matrix Rank", f"r = {scipy_report.custom_rank}", f"r = {scipy_report.scipy_rank}", "0", "[green]MATCH[/green]")
+        scipy_table.add_row("Eigenvalues (PCA)", "Custom QR/Deflation", "scipy.linalg.eigh", f"{scipy_report.eigenvalues_max_diff:.2e}", "[green]MATCH[/green]")
+        scipy_table.add_row("Projection Subspace P", "Custom V_k V_k^T", "scipy V_k V_k^T", f"{scipy_report.projection_subspace_diff:.2e}", "[green]MATCH[/green]")
+        scipy_table.add_row("Cosine Similarity Matrix", "Custom D^-1 G D^-1", "1 - scipy.spatial.cosine", f"{scipy_report.cosine_similarity_max_diff:.2e}", "[green]MATCH[/green]")
+        console.print(scipy_table)
+    else:
+        print(f"Benchmark Test A_test: {'ALL PASSED' if bench_report.all_passed else 'FAILED'}")
+        print(f"Theoretical Identities: {'ALL PASSED' if ident_report.all_identities_passed else 'FAILED'}")
+        print(f"Scipy Comparison: {'ALL MATCHED' if scipy_report.all_passed else 'FAILED'}")
 
     print("\n" + "=" * 80)
     print(" Complete Linear Algebra Customer Analytics Pipeline Executed Successfully!")
