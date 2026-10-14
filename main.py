@@ -1,11 +1,13 @@
 """Main entry point and demonstration script for the Customer Purchase Pattern & Profile Analyzer.
 
-Executes Stages 1 through 5 of the sequential mathematical pipeline:
+Executes the complete sequential mathematical pipeline:
 1. Stage 1: Synthetic data generation with controllable rank r < min(m, n), CSV/JSON parsing, missing value imputation, and vector normalizations (L2 and Mean Centering).
 2. Stage 2: Gaussian Elimination with Partial Pivoting to RREF, Matrix Rank, Nullity (Rank-Nullity Theorem), and Subspace Bases (Row Space, Column Space, Null Space).
 3. Stage 3: Vector Inner Products, Gram Matrix G = A * A^T, Diagonal Norm Matrix D, and Cosine Similarity Matrix S = D^-1 * G * D^-1.
 4. Stage 4: Covariance Matrix C = (1/(m-1)) * X^T * X, Spectral Decomposition (QR algorithm & Jacobi method), Sorted Eigenpairs, and Cumulative Variance Ratio R(k).
 5. Stage 5: Orthogonal Subspace Projection Operator P = V_k * V_k^T, Low-Dimensional Customer Coordinates Y = X * V_k, Reconstruction, and Information Loss.
+6. Stage 6: Profile Synthesis: Subspace Euclidean distance clustering d(y_i, y_j) = ||y_i - y_j||_2, Centroid Calculation, Re-projection c_orig = c_proj * V_k^T + mu, and Archetype Interpretation.
+7. Dashboards: High-resolution visual dashboards rendered via Matplotlib and Plotly (2D/3D Projections, Similarity Heatmaps, Scree Plots, Radar Charts).
 """
 
 from __future__ import annotations
@@ -26,6 +28,8 @@ except ImportError:
 from src.ingestion.synthetic_generator import SyntheticCustomerDataGenerator
 from src.ingestion.data_ingestion import DataIngestionModule, NormalizationType, ImputationStrategy
 from src.linear_algebra.engine import LinearAlgebraEngine
+from src.profiling.profiler import AnalyticalProfilingModule
+from src.visualization.engine import VisualizationEngine
 
 
 def print_header(title: str) -> None:
@@ -34,9 +38,9 @@ def print_header(title: str) -> None:
         console = Console()
         console.print(Panel(f"[bold cyan]{title}[/bold cyan]", border_style="cyan"))
     else:
-        print("\n" + "=" * 78)
+        print("\n" + "=" * 80)
         print(f" {title.upper()} ")
-        print("=" * 78)
+        print("=" * 80)
 
 
 def display_matrix_summary(title: str, matrix: np.ndarray, rows_to_show: int = 5, cols_to_show: int = 5) -> None:
@@ -100,8 +104,11 @@ def display_table(title: str, matrix: np.ndarray, row_labels: list[str], col_lab
 
 
 def run_pipeline_demo() -> None:
-    """Executes a complete demonstration of Stages 1 through 5."""
+    """Executes a complete demonstration of the end-to-end mathematical data pipeline."""
     la_engine = LinearAlgebraEngine()
+    viz_engine = VisualizationEngine()
+    fig_dir = Path("reports/figures")
+    fig_dir.mkdir(parents=True, exist_ok=True)
 
     # =========================================================================
     # STAGE 1: Data Ingestion & Synthetic Data Generation
@@ -203,17 +210,12 @@ def run_pipeline_demo() -> None:
             cvr = spec_res.cumulative_variance_ratios[idx] * 100.0
             eigen_table.add_row(f"PC {idx+1}", f"{lam:.4f}", f"{vr:.2f}%", f"{cvr:.2f}%")
         console.print(eigen_table)
-    else:
-        print("\nPrincipal Component Spectrum:")
-        for idx in range(min(n, 7)):
-            print(f"  PC {idx+1}: lambda={spec_res.eigenvalues[idx]:.4e} | Var={spec_res.variance_ratios[idx]*100:.2f}% | R(k)={spec_res.cumulative_variance_ratios[idx]*100:.2f}%")
 
     # =========================================================================
     # STAGE 5: Subspace Orthogonal Projection
     # =========================================================================
     print_header("Stage 5: Subspace Orthogonal Projection (P = V_k * V_k^T, Y = X * V_k)")
 
-    # Select top k=3 components corresponding to target rank r=3
     k_proj = r
     proj_res = la_engine.compute_orthogonal_projection(spec_res, k=k_proj)
     print(f"Subspace Projection Dimension: k = {k_proj}")
@@ -222,56 +224,108 @@ def run_pipeline_demo() -> None:
     print(f"Cumulative Variance Preserved R({k_proj}): {proj_res.cumulative_variance_explained * 100.0:.2f}%")
     print(f"Relative Reconstruction Error (Information Loss): {proj_res.reconstruction_error:.4e}")
 
-    # Display preview of projected coordinates for first 5 customers
-    coord_labels = [f"Cust {i+1}" for i in range(5)]
-    pc_labels = [f"PC {j+1}" for j in range(k_proj)]
-    display_table(
-        f"Customer Subspace Coordinates Y in R^{{5 x {k_proj}}}",
-        proj_res.projected_coordinates[:5, :k_proj],
-        coord_labels,
-        pc_labels,
+    # =========================================================================
+    # STAGE 6: Profile Synthesis & Interpretation
+    # =========================================================================
+    print_header("Stage 6: Profile Synthesis & Customer Archetype Extraction")
+
+    profiler = AnalyticalProfilingModule(random_state=42)
+    profile_res = profiler.profile_customers(
+        projected_coordinates=proj_res.projected_coordinates,
+        top_eigenvectors=proj_res.top_eigenvectors,
+        mean_vector=spec_res.mean_vector,
+        n_clusters=3,
+        customer_ids=synth_res.customer_ids,
+        category_names=synth_res.category_names,
     )
 
-    # Check projection matrix idempotence P^2 == P and symmetry P^T == P
-    P = proj_res.projection_matrix
-    sym_err = float(np.max(np.abs(P - P.T)))
-    idem_err = float(np.max(np.abs(np.matmul(P, P) - P)))
-    print(f"\nOrthogonal Projection Properties:")
-    print(f"  - Symmetry Error (||P - P^T||): {sym_err:.4e} (Must be 0)")
-    print(f"  - Idempotence Error (||P^2 - P||): {idem_err:.4e} (Must be 0)")
-    print(f"  - Trace(P): {np.trace(P):.4f} (Must equal k = {k_proj})")
+    cluster_names = [c.archetype_name for c in profile_res.clusters]
+
+    if HAS_RICH:
+        console = Console()
+        prof_table = Table(title="Discovered Customer Behavioral Archetypes")
+        prof_table.add_column("Cluster", style="cyan")
+        prof_table.add_column("Archetype Profile", style="bold yellow")
+        prof_table.add_column("Customer Count", justify="right")
+        prof_table.add_column("Share (%)", justify="right")
+        prof_table.add_column("Avg Total Spend", justify="right", style="green")
+        prof_table.add_column("Dominant Categories", style="white")
+
+        for c in profile_res.clusters:
+            prof_table.add_row(
+                f"Group {c.cluster_id + 1}",
+                c.archetype_name,
+                str(c.customer_count),
+                f"{c.percentage:.1f}%",
+                f"${c.average_spend:.2f}",
+                ", ".join(c.dominant_categories[:3]),
+            )
+        console.print(prof_table)
+    else:
+        df_summary = profile_res.to_dataframe()
+        print(df_summary[["Cluster", "Archetype", "Customers", "Share (%)", "Avg Spend", "Top Categories"]])
 
     # =========================================================================
-    # Mathematical Verification on Benchmark Matrix A_test (from Masterplan §4)
+    # VISUALIZATION DASHBOARDS
     # =========================================================================
-    print_header("Benchmark Matrix Hand-Calculated Verification (Masterplan Section 4)")
+    print_header("Visualization Engine: Generating Graphical Dashboards")
 
-    a_test = np.array([
-        [4.0, 0.0, 3.0],
-        [0.0, 5.0, 0.0],
-        [8.0, 0.0, 6.0],
-    ], dtype=np.float64)
+    # 1. 2D Subspace Projection
+    var_exp_2d = (
+        float(spec_res.variance_ratios[0] * 100.0),
+        float(spec_res.variance_ratios[1] * 100.0),
+    )
+    viz_engine.plot_subspace_projection_2d(
+        Y=proj_res.projected_coordinates,
+        labels=profile_res.labels,
+        cluster_names=cluster_names,
+        centroids=profile_res.projected_centroids[:, :2],
+        variance_explained=var_exp_2d,
+        save_path=fig_dir / "customer_subspace_2d",
+    )
+    print("  [x] Rendered 2D Subspace Projection: reports/figures/customer_subspace_2d.[png|html]")
 
-    test_spec = la_engine.compute_spectral_decomposition(a_test, method="characteristic")
-    test_proj = la_engine.compute_orthogonal_projection(test_spec, k=2)
+    # 2. 3D Subspace Projection
+    viz_engine.plot_subspace_projection_3d(
+        Y=proj_res.projected_coordinates,
+        labels=profile_res.labels,
+        cluster_names=cluster_names,
+        centroids=profile_res.projected_centroids,
+        save_path=fig_dir / "customer_subspace_3d",
+    )
+    print("  [x] Rendered 3D Subspace Projection: reports/figures/customer_subspace_3d.[png|html]")
 
-    labels_test = ["Customer 1", "Customer 2", "Customer 3"]
-    cat_test = ["Category 1", "Category 2", "Category 3"]
+    # 3. Cosine Similarity Heatmap
+    viz_engine.plot_similarity_heatmap(
+        similarity_matrix=sim_res.cosine_similarity_matrix,
+        labels=profile_res.labels,
+        max_display=40,
+        save_path=fig_dir / "cosine_similarity_heatmap",
+    )
+    print("  [x] Rendered Cosine Similarity Heatmap: reports/figures/cosine_similarity_heatmap.[png|html]")
 
-    display_table("Original Benchmark Matrix A_test", a_test, labels_test, cat_test)
-    display_table("Mean-Centered Matrix X", test_spec.mean_centered_matrix, labels_test, cat_test)
-    display_table("Sample Covariance Matrix C = (1/2) * X^T * X", test_spec.covariance_matrix, cat_test, cat_test)
+    # 4. Variance Scree Plot
+    viz_engine.plot_variance_scree(
+        eigenvalues=spec_res.eigenvalues,
+        variance_ratios=spec_res.variance_ratios,
+        cumulative_ratios=spec_res.cumulative_variance_ratios,
+        threshold=0.90,
+        save_path=fig_dir / "variance_scree_plot",
+    )
+    print("  [x] Rendered Variance Scree Plot: reports/figures/variance_scree_plot.[png|html]")
 
-    print(f"\nSpectral Decomposition of C (Rank = 2):")
-    print(f"  - Theoretical Trace: 100/3 ~ 33.3333 | Computed Trace: {test_spec.trace_covariance:.4f}")
-    print(f"  - Sorted Eigenvalues: {test_spec.eigenvalues}")
-    print(f"  - Top 2 Components Cumulative Variance: {test_spec.cumulative_variance_ratios[1] * 100.0:.2f}% (100.0% expected)")
-    print(f"  - Reconstruction Error with k=2: {test_proj.reconstruction_error:.4e} (Exact 0.0 expected)")
+    # 5. Profile Radar / Spider Chart
+    viz_engine.plot_profile_radar_chart(
+        category_centroids=profile_res.category_centroids,
+        category_names=synth_res.category_names,
+        cluster_names=cluster_names,
+        save_path=fig_dir / "customer_archetype_radar",
+    )
+    print("  [x] Rendered Archetype Profile Radar Chart: reports/figures/customer_archetype_radar.[png|html]")
 
-    display_table("Orthonormal Eigenvectors V", test_spec.eigenvectors, cat_test, ["v_1", "v_2", "v_3"])
-    display_table("Orthogonal Projection Matrix P = V_2 * V_2^T", test_proj.projection_matrix, cat_test, cat_test)
-
-    print("\nAll Stages 1 through 5 verified and fully operational!")
+    print("\n" + "=" * 80)
+    print(" Complete Linear Algebra Customer Analytics Pipeline Executed Successfully!")
+    print("=" * 80)
 
 
 if __name__ == "__main__":
