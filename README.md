@@ -1,100 +1,137 @@
 # Customer Purchase Pattern & Profile Analyzer
 
-An end-to-end Python framework implementing a sequential Linear Algebra and Vector Calculus data pipeline to analyze customer purchase patterns, uncover latent behavioral dimensions, calculate customer profile similarity, and reduce dimensional space via orthogonal projections.
+An end-to-end Python framework implementing a strictly sequential **Linear Algebra & Vector Calculus** computational pipeline to uncover latent customer purchasing preferences, evaluate pairwise similarity, reduce dimensional space via orthogonal projections, and synthesize behavioral customer archetypes.
 
 ---
 
 ## Computational Pipeline Architecture
 
 ```
-[ Raw Purchase Data (CSV / JSON) ]
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│ Stage 1: Data Ingestion Module  │ ──► Dense Matrix A ∈ ℝ^(m × n), L2 Normalized, Mean Centered
-└─────────────────────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│ Stage 2: Rank & Basis Analyzer  │ ──► RREF, Matrix Rank r, Column/Null Space Bases
-└─────────────────────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│ Stage 3: Vector Similarity      │ ──► Inner Product Gram Matrix G, Cosine Similarity S
-└─────────────────────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│ Stage 4: Spectral / PCA Engine  │ ──► Covariance C, Eigenvalues λ, Eigenvectors V
-└─────────────────────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│ Stage 5: Subspace Projection    │ ──► Orthogonal Projection P, Reduced Matrix Y ∈ ℝ^(m × k)
-└─────────────────────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│ Stage 6: Profile Reconstruction │ ──► Archetype Profiles & Centroid Interpretations
-└─────────────────────────────────┘
+[ Raw Purchase Data (CSV / JSON / Synthetic) ]
+                      │
+                      ▼
+┌───────────────────────────────────────────┐
+│ Stage 1: Data Ingestion & Matrix Setup    │ ──► Dense Matrix A ∈ ℝ^(m × n)
+└───────────────────────────────────────────┘
+                      │
+                      ▼
+┌───────────────────────────────────────────┐
+│ Stage 2: Rank & Fundamental Subspaces     │ ──► RREF, Rank r, Bases for R(A), C(A), N(A)
+└───────────────────────────────────────────┘
+                      │
+                      ▼
+┌───────────────────────────────────────────┐
+│ Stage 3: Vector Similarity Engine         │ ──► Gram Matrix G = A*A^T, Cosine Matrix S
+└───────────────────────────────────────────┘
+                      │
+                      ▼
+┌───────────────────────────────────────────┐
+│ Stage 4: Covariance & Spectral PCA        │ ──► Covariance C, Eigenvalues λ, Eigenvectors V
+└───────────────────────────────────────────┘
+                      │
+                      ▼
+┌───────────────────────────────────────────┐
+│ Stage 5: Subspace Orthogonal Projection   │ ──► Operator P = V_k*V_k^T, Coordinates Y = X*V_k
+└───────────────────────────────────────────┘
+                      │
+                      ▼
+┌───────────────────────────────────────────┐
+│ Stage 6: Profile Formation & Archetypes   │ ──► Centroid Re-projection c_orig, Radar Profiles
+└───────────────────────────────────────────┘
+                      │
+                      ▼
+┌───────────────────────────────────────────┐
+│ Stage 7: Verification Engine & Scipy Comp │ ──► Benchmark A_test, Identities, scipy.linalg
+└───────────────────────────────────────────┘
 ```
 
 ---
 
-## Stage 1: Data Ingestion & Matrix Formulation
+## Key Pipeline Modules & Mathematical Formulations
 
-The first module (`src.ingestion`) provides:
-1. **Synthetic Data Generator with Controllable Rank**:
-   - Creates a synthetic customer-category matrix $A \in \mathbb{R}^{m \times n}$ with a strictly controllable linear rank $r < \min(m, n)$.
-   - Constructed via low-rank matrix decomposition:
-     $$A = W \cdot H$$
-     where $W \in \mathbb{R}^{m \times r}$ represents customer archetype mixture loadings and $H \in \mathbb{R}^{r \times n}$ represents category archetype bases.
-   - Guaranteed $\text{rank}(A) = r$ when noise is zero, with singular values $s_{r+1} = \dots = s_{\min(m, n)} = 0$.
-2. **Robust Ingestion & Imputation**:
-   - Ingests tabular data from CSV and JSON files (or buffers and DataFrames).
-   - Handles missing values via configurable imputation: `zero`, `mean`, `median`, `mode`.
-   - Formulates a dense NumPy Matrix $A_{m \times n}$ with float64 precision.
-3. **Mathematical Normalization**:
-   - **L2 Normalization**: Row-wise normalization $\mathbf{a}_i / \|\mathbf{a}_i\|_2$ projecting customer vectors onto the unit hypersphere for directional cosine similarity.
-   - **Mean Centering**: Column-wise centering $X = A - \mathbf{1}\boldsymbol{\mu}^T$ where $\boldsymbol{\mu} = \frac{1}{m} \sum_{i=1}^m \mathbf{a}_i$, preparing data for sample covariance matrix construction $C = \frac{1}{m-1} X^T X$.
+### Stage 1: Data Ingestion & Matrix Setup
+* **Controllable-Rank Synthetic Generator**: Creates matrix $A \in \mathbb{R}^{m \times n}$ with exact linear rank $r < \min(m, n)$ via low-rank factorization $A = W \cdot H$.
+* **Robust Imputation**: Configurable `zero`, `mean`, `median`, and `mode` strategies.
+* **Normalization**:
+  - **L2 Normalization**: $\mathbf{a}_i / \|\mathbf{a}_i\|_2$ maps customer vectors onto the unit hypersphere $S^{n-1}$.
+  - **Mean Centering**: $X = A - \mathbf{1}\boldsymbol{\mu}^T$ where $\boldsymbol{\mu} = \frac{1}{m} \sum \mathbf{a}_i$.
+
+### Stage 2: Matrix Rank & Basis Extraction
+* **Custom RREF**: Gaussian Elimination with Partial Pivoting.
+* **Rank-Nullity Theorem**: $\dim \mathcal{C}(A) + \dim \mathcal{N}(A) = n$.
+* **Subspace Bases**:
+  - $\mathcal{R}(A)$: Non-zero rows of $\text{RREF}(A)$.
+  - $\mathcal{C}(A)$: Pivot columns of the original matrix $A$.
+  - $\mathcal{N}(A)$: Parameterization of free variables satisfying $A \mathbf{v} = \mathbf{0}$.
+
+### Stage 3: Vector Inner Product & Cosine Similarity
+* **Inner Product**: $\langle \mathbf{a}_i, \mathbf{a}_j \rangle = \sum_{k=1}^n A_{ik} A_{jk}$.
+* **Gram Matrix**: $G = A A^T \in \mathbb{R}^{m \times m}$.
+* **Cosine Similarity**: $S = D^{-1} G D^{-1}$ where $D = \operatorname{diag}(\|\mathbf{a}_1\|_2, \dots, \|\mathbf{a}_m\|_2)$.
+
+### Stage 4: Covariance & Spectral Decomposition (PCA)
+* **Sample Covariance**: $C = \frac{1}{m - 1} X^T X \in \mathbb{R}^{n \times n}$.
+* **First-Principles Solvers**:
+  - Householder Tridiagonalization with Wilkinson Shift and Submatrix Deflation (QR algorithm).
+  - Cyclic Jacobi Eigenvalue Algorithm (Givens similarity rotations).
+  - Cardano trigonometric cubic polynomial solver for $n \le 3$.
+* **Variance Retention**: Cumulative variance ratio $R(k) = \frac{\sum_{i=1}^k \lambda_i}{\sum_{j=1}^n \lambda_j}$.
+
+### Stage 5: Subspace Orthogonal Projection
+* **Projection Matrix**: $P = V_k V_k^T \in \mathbb{R}^{n \times n}$ ($P^T = P$, $P^2 = P$).
+* **Subspace Coordinates**: $Y = X V_k \in \mathbb{R}^{m \times k}$.
+* **Reconstruction**: $\hat{X} = Y V_k^T = X P$, with relative information loss $\mathcal{L}(k) = 1 - R(k)$.
+
+### Stage 6: Profile Formation & Archetype Extraction
+* **Subspace Proximity**: Euclidean distance clustering $d(\mathbf{y}_i, \mathbf{y}_j) = \|\mathbf{y}_i - \mathbf{y}_j\|_2$.
+* **Centroid Re-projection**: $\mathbf{c}_{\text{orig}, g} = \mathbf{c}_{\text{proj}, g} V_k^T + \boldsymbol{\mu} \in \mathbb{R}^n$.
+* **Behavioral Synthesis**: Category lift ranking and archetype profile labeling.
+
+### Stage 7: Mathematical Verification Engine
+* **Hardcoded Benchmark Matrix $A_{\text{test}}$**: Validates Row 3 = 2 * Row 1, Rank 2, Pivot Columns [0, 1], RREF, Norms, Inner Product 50.0, Cosine Similarity 1.0.
+* **Theoretical Identities**: $\operatorname{Trace}(C) = \sum \lambda_i$, $\det(C) = \prod \lambda_i$, $V^T V = I$, $C \mathbf{v}_k = \lambda_k \mathbf{v}_k$.
+* **Scipy Validation**: Numerical stability check vs `scipy.linalg` reference routines.
 
 ---
 
 ## Installation & Setup
 
-### Prerequisites
-- Python 3.10+ (tested with Python 3.13 / 3.14)
-- Virtual environment (recommended)
-
 ```bash
-# Create and activate virtual environment
+# Clone and enter directory
+cd splendid-heisenberg
+
+# Setup virtual environment (Python 3.10+)
 python -m venv .venv
 
-# Windows
+# Windows activation
 .\.venv\Scripts\activate
 
-# Linux / macOS
-source .venv/bin/activate
-
-# Install required dependencies
+# Install dependencies
 pip install -r requirements.txt
 ```
 
 ---
 
-## Running the Stage 1 Pipeline
+## Usage: CLI & Interactive Dashboard
 
-Execute the demonstration script:
-
+### 1. Run Complete Sequential Pipeline (CLI Mode)
+Executes all stages sequentially, prints rich mathematical tables, validates against benchmarks, and renders plots:
 ```bash
 python main.py
 ```
 
-### Running Tests
-
-Execute the automated test suite with pytest:
-
+### 2. Launch Interactive Streamlit Presentation Dashboard
+Launches the full interactive academic presentation dashboard with LaTeX formulas, 2D/3D Plotly visualizers, and Viva Voce defense mode:
 ```bash
-pytest tests/ -v
+streamlit run app.py
+```
+*(Or run `python main.py --ui`)*
+
+---
+
+## Automated Verification Suite
+
+Run all 43 automated unit and theoretical identity tests:
+```bash
+pytest -v
 ```
