@@ -258,12 +258,12 @@ with tabs[0]:
         st.info("**Stage 6**\n\nArchetypes\n\n$\\mathbf{c}_{\\text{orig}}, d(y_i, y_j)$")
 
     st.markdown(
-        """
+        r"""
         ### Theoretical Foundations
-        1. **Low-Rank Factorization**: Given customers $m$ and categories $n$, latent preference rank $r < \min(m, n)$ is simulated via $A = W \\cdot H$.
-        2. **Rank-Nullity Theorem**: For matrix $A_{m \\times n}$, $\\dim \\mathcal{C}(A) + \\dim \\mathcal{N}(A) = n$.
+        1. **Low-Rank Factorization**: Given customers $m$ and categories $n$, latent preference rank $r < \min(m, n)$ is simulated via $A = W \cdot H$.
+        2. **Rank-Nullity Theorem**: For matrix $A_{m \times n}$, $\dim \mathcal{C}(A) + \dim \mathcal{N}(A) = n$.
         3. **Angle vs. Volume**: Cosine similarity $S = D^{-1} G D^{-1}$ eliminates spending magnitude bias, measuring purely directional purchase alignment.
-        4. **Orthogonal Projection**: Minimizes reconstruction error $\\sum \\|\\mathbf{x}_i - P \\mathbf{x}_i\\|^2$ onto the maximum-variance subspace.
+        4. **Orthogonal Projection**: Minimizes reconstruction error $\sum \|\mathbf{x}_i - P \mathbf{x}_i\|^2$ onto the maximum-variance subspace.
         """
     )
 
