@@ -112,9 +112,57 @@ if data_mode == "Synthetic Correlated Preference Matrix":
     random_seed = st.sidebar.number_input("Random State Seed", value=42, step=1)
 
 elif data_mode == "Upload Custom CSV / JSON":
-    st.sidebar.subheader("Upload Dataset")
-    uploaded_file = st.sidebar.file_uploader("Upload CSV or JSON file", type=["csv", "json"])
-    cust_id_col = st.sidebar.text_input("Customer ID Column Name (Optional)", "")
+    st.sidebar.subheader("Dataset Ingestion Mode")
+    
+    sample_options = {
+        "Upload my own CSV / JSON file": None,
+        "Sample 1: Retail Customers (120 x 8)": "data/retail_customer_purchases.csv",
+        "Sample 2: E-Commerce Spending (200 x 10)": "data/ecommerce_spending_patterns.csv",
+        "Sample 3: Purchases with Missing Data (Imputation test)": "data/retail_purchases_with_missing.csv",
+        "Sample 4: Hand-Calculated Benchmark (3 x 3)": "data/benchmark_A_test.csv",
+    }
+    
+    selected_source = st.sidebar.radio(
+        "Source File Selection",
+        list(sample_options.keys()),
+        index=1,
+        help="Select a preloaded dataset or choose to upload your own custom file."
+    )
+    
+    uploaded_file = None
+    if selected_source == "Upload my own CSV / JSON file":
+        uploaded_file = st.sidebar.file_uploader("Upload CSV or JSON file", type=["csv", "json"])
+        cust_id_col = st.sidebar.text_input("Customer ID Column Name (Optional)", "")
+    else:
+        cust_id_col = "CustomerID"
+        st.sidebar.info(f"Loaded: `{sample_options[selected_source]}`")
+    
+    # Download sample datasets directly to local PC
+    with st.sidebar.expander("📥 Download Sample Datasets (CSV)", expanded=False):
+        st.caption("Click to download sample datasets to test uploading:")
+        for name, path in [
+            ("retail_customer_purchases.csv", "data/retail_customer_purchases.csv"),
+            ("ecommerce_spending_patterns.csv", "data/ecommerce_spending_patterns.csv"),
+            ("retail_purchases_with_missing.csv", "data/retail_purchases_with_missing.csv"),
+            ("benchmark_A_test.csv", "data/benchmark_A_test.csv"),
+        ]:
+            p = Path(path)
+            if p.exists():
+                with open(p, "rb") as f:
+                    st.download_button(
+                        label=f"📄 {name}",
+                        data=f.read(),
+                        file_name=name,
+                        mime="text/csv",
+                        key=f"dl_btn_{name}",
+                    )
+
+    impute_choice = st.sidebar.selectbox(
+        "Missing Value Imputation Strategy",
+        ["zero", "mean", "median", "mode"],
+        index=0,
+        help="Strategy to replace NaN / null values before dense matrix formulation."
+    )
 
 # Normalization & Hyperparameters
 st.sidebar.subheader("Mathematical Hyperparameters")
@@ -141,14 +189,17 @@ def execute_pipeline(
     noise_sigma: float,
     seed: int,
     norm_choice_str: str,
+    impute_choice_str: str,
     k_dim: int,
     n_clust: int,
     file_bytes: Optional[bytes] = None,
     file_name: Optional[str] = None,
+    sample_file_path: Optional[str] = None,
     cust_col: Optional[str] = None,
 ) -> PipelineExecutionResult:
     pipeline = SequentialMathematicalPipeline(random_state=seed)
     chosen_norm = norm_map[norm_choice_str]
+    chosen_impute = ImputationStrategy(impute_choice_str)
 
     if data_mode == "Synthetic Correlated Preference Matrix":
         gen = SyntheticCustomerDataGenerator(random_state=seed)
@@ -163,6 +214,7 @@ def execute_pipeline(
             k_dimensions=k_dim,
             n_clusters=n_clust,
             normalization=chosen_norm,
+            imputation_strategy=chosen_impute,
         )
 
     elif data_mode == "Hand-Calculated Benchmark Matrix (A_test)":
@@ -172,34 +224,58 @@ def execute_pipeline(
             k_dimensions=min(k_dim, 2),
             n_clusters=n_clust,
             normalization=chosen_norm,
+            imputation_strategy=chosen_impute,
         )
 
     else:
-        if file_bytes is None:
-            # Fallback to default benchmark
-            A_bench = VerificationEngine.get_benchmark_matrix()
-            return pipeline.run(data_source=A_bench, k_dimensions=2, n_clusters=2)
-
-        buffer = io.BytesIO(file_bytes)
-        if file_name and file_name.endswith(".json"):
-            df = pd.read_json(buffer)
-        else:
-            df = pd.read_csv(buffer)
-
         target_cust = cust_col.strip() if cust_col and cust_col.strip() else None
-        return pipeline.run(
-            data_source=df,
-            k_dimensions=k_dim,
-            n_clusters=n_clust,
-            normalization=chosen_norm,
-            customer_id_col=target_cust,
-        )
+        if file_bytes is not None:
+            buffer = io.BytesIO(file_bytes)
+            if file_name and file_name.endswith(".json"):
+                df = pd.read_json(buffer)
+            else:
+                df = pd.read_csv(buffer)
+            return pipeline.run(
+                data_source=df,
+                k_dimensions=k_dim,
+                n_clusters=n_clust,
+                normalization=chosen_norm,
+                imputation_strategy=chosen_impute,
+                customer_id_col=target_cust,
+            )
+        elif sample_file_path is not None and Path(sample_file_path).exists():
+            df = pd.read_csv(sample_file_path)
+            return pipeline.run(
+                data_source=df,
+                k_dimensions=k_dim,
+                n_clusters=n_clust,
+                normalization=chosen_norm,
+                imputation_strategy=chosen_impute,
+                customer_id_col=target_cust,
+            )
+        else:
+            default_path = Path("data/retail_customer_purchases.csv")
+            if default_path.exists():
+                df = pd.read_csv(default_path)
+                return pipeline.run(
+                    data_source=df,
+                    k_dimensions=k_dim,
+                    n_clusters=n_clust,
+                    normalization=chosen_norm,
+                    imputation_strategy=chosen_impute,
+                    customer_id_col="CustomerID",
+                )
+            else:
+                A_bench = VerificationEngine.get_benchmark_matrix()
+                return pipeline.run(data_source=A_bench, k_dimensions=2, n_clusters=2)
 
 
 # Run Pipeline
 f_bytes = uploaded_file.getvalue() if (data_mode == "Upload Custom CSV / JSON" and uploaded_file is not None) else None
 f_name = uploaded_file.name if (data_mode == "Upload Custom CSV / JSON" and uploaded_file is not None) else None
+chosen_sample_path = sample_options[selected_source] if data_mode == "Upload Custom CSV / JSON" else None
 c_col = cust_id_col if data_mode == "Upload Custom CSV / JSON" else None
+chosen_impute = impute_choice if data_mode == "Upload Custom CSV / JSON" else "zero"
 
 with st.spinner("Executing Sequential Mathematical Pipeline..."):
     results = execute_pipeline(
@@ -210,10 +286,12 @@ with st.spinner("Executing Sequential Mathematical Pipeline..."):
         noise_sigma=noise_sigma if data_mode == "Synthetic Correlated Preference Matrix" else 0.0,
         seed=random_seed if data_mode == "Synthetic Correlated Preference Matrix" else 42,
         norm_choice_str=norm_choice,
+        impute_choice_str=chosen_impute,
         k_dim=subspace_k,
         n_clust=n_clusters_k,
         file_bytes=f_bytes,
         file_name=f_name,
+        sample_file_path=chosen_sample_path,
         cust_col=c_col,
     )
 
@@ -293,6 +371,14 @@ with tabs[1]:
     st.markdown("#### Dense Customer-Category Matrix $A_{m \\times n}$ Preview")
     df_raw = results.ingestion.to_dataframe()
     st.dataframe(df_raw.head(15), use_container_width=True)
+    
+    st.download_button(
+        label="📥 Download Formulated Matrix A (CSV)",
+        data=df_raw.to_csv(index=False).encode("utf-8"),
+        file_name="matrix_A_formulated.csv",
+        mime="text/csv",
+        key="btn_download_matrix_a",
+    )
 
     with st.expander("Mathematical Vector Normalization Options"):
         st.markdown(

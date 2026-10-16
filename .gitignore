@@ -51,3 +51,6 @@ htmlcov/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Generated Interactive Reports (large HTML bundles)
+reports/figures/*.html
