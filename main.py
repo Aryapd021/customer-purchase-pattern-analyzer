@@ -292,8 +292,23 @@ def run_pipeline() -> PipelineExecutionResult:
     return res
 
 
+def is_running_in_streamlit() -> bool:
+    """Detects if the script is being executed via 'streamlit run'."""
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        return get_script_run_ctx() is not None
+    except Exception:
+        return False
+
+
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] in ["--ui", "--streamlit", "-u"]:
+    if is_running_in_streamlit():
+        # Seamlessly load the interactive dashboard when deployed with main.py
+        app_path = Path(__file__).resolve().parent / "app.py"
+        with open(app_path, "r", encoding="utf-8") as f:
+            code = compile(f.read(), str(app_path), "exec")
+            exec(code, globals())
+    elif len(sys.argv) > 1 and sys.argv[1] in ["--ui", "--streamlit", "-u"]:
         print("Launching interactive Streamlit UI...")
         os.system("streamlit run app.py")
     else:
