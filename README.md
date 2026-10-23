@@ -121,7 +121,7 @@ python main.py
 ```
 
 ### 2. Launch Interactive Streamlit Presentation Dashboard
-Launches the full interactive academic presentation dashboard with LaTeX formulas, 2D/3D Plotly visualizers, and Viva Voce defense mode:
+Launches the full interactive academic presentation dashboard with LaTeX formulas, 2D/3D Plotly visualizers, and mathematical verification engine:
 ```bash
 streamlit run app.py
 ```

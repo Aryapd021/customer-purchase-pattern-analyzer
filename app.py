@@ -307,7 +307,6 @@ tabs = st.tabs([
     "5️⃣ Stage 5: Subspace Projection",
     "6️⃣ Stage 6: Profile Archetypes",
     "🔬 Verification Engine",
-    "🎓 Viva Voce Q&A Practice",
 ])
 
 # =============================================================================
@@ -804,60 +803,6 @@ with tabs[7]:
         {"Routine": "Cosine Similarity", "Custom Algorithm": "Custom D^-1 G D^-1", "scipy.linalg Reference": "1 - scipy.spatial.distance.cosine", "Max Discrepancy": f"{s_report.cosine_similarity_max_diff:.2e}", "Status": "MATCH"},
     ]
     st.dataframe(pd.DataFrame(scipy_data), use_container_width=True)
-
-# =============================================================================
-# TAB 9: Viva Voce & Presentation Mode
-# =============================================================================
-with tabs[8]:
-    st.subheader("🎓 Viva Voce & Presentation Mode: Examiner Q&A Defense")
-    st.markdown(
-        """
-        Curated mathematical defense and conceptual explanations for the oral examination (Viva Voce):
-        """
-    )
-
-    q1, q2 = st.columns(2)
-    with q1:
-        with st.expander("Q1: Why is matrix rank important in customer purchase analysis?", expanded=True):
-            st.markdown(
-                r"""
-                **Examiner Answer**:
-                The rank $r = \text{rank}(A) \le \min(m, n)$ represents the true number of **linearly independent purchasing dimensions**.
-                If $r < n$, there exist redundant or perfectly collinear product categories, meaning customer behavior can be completely explained by a smaller set of underlying latent factors.
-                """
-            )
-
-        with st.expander("Q2: What is the physical & geometric meaning of the Inner Product?", expanded=True):
-            st.markdown(
-                r"""
-                **Examiner Answer**:
-                The inner product $\langle \mathbf{a}_i, \mathbf{a}_j \rangle = \sum_{k=1}^n A_{ik} A_{jk}$ measures the total unnormalized co-purchasing volume between Customer $i$ and Customer $j$.
-                Normalizing by norms yields **Cosine Similarity**:
-                $$S_{ij} = \cos \theta = \frac{\langle \mathbf{a}_i, \mathbf{a}_j \rangle}{\|\mathbf{a}_i\|_2 \|\mathbf{a}_j\|_2}$$
-                which measures **directional preference alignment** regardless of whether one customer spent \$50 and another spent \$5,000.
-                """
-            )
-
-    with q2:
-        with st.expander("Q3: How does Eigen Analysis (PCA) perform optimal dimensionality reduction?", expanded=True):
-            st.markdown(
-                r"""
-                **Examiner Answer**:
-                Eigen-decomposition of the sample covariance matrix $C = \frac{1}{m-1} X^T X$ finds the principal orthogonal axes along which the variance of customer purchase behavior is maximized.
-                By projecting customer vectors onto the subspace spanned by the top $k$ eigenvectors ($V_k$), we prove that the mean squared reconstruction error:
-                $$\mathcal{L}(k) = \frac{\|X - X P\|_F^2}{\|X\|_F^2} = 1 - \frac{\sum_{i=1}^k \lambda_i}{\sum_{j=1}^n \lambda_j}$$
-                is strictly minimized (Eckart-Young-Mirsky Theorem).
-                """
-            )
-
-        with st.expander("Q4: What does the Null Space of the purchase matrix represent?", expanded=True):
-            st.markdown(
-                r"""
-                **Examiner Answer**:
-                The Null Space $\mathcal{N}(A) = \{\mathbf{x} \in \mathbb{R}^n : A \mathbf{x} = \mathbf{0}\}$ consists of linear combinations of category spends that yield net zero activity across all customers.
-                These represent invariant product bundling relationships or complete linear redundancies across categories.
-                """
-            )
 
 st.markdown("---")
 st.caption("Customer Purchase Pattern & Profile Analyzer | Linear Algebra Sequential Pipeline | Python 3.10+")
