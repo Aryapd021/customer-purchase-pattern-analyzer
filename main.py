@@ -266,7 +266,7 @@ def run_pipeline() -> PipelineExecutionResult:
     viz.plot_similarity_heatmap(
         similarity_matrix=res.similarity.cosine_similarity_matrix,
         labels=res.profiling.labels,
-        max_display=40,
+        customer_ids=res.ingestion.customer_ids,
         save_path=fig_dir / "cosine_similarity_heatmap",
     )
     viz.plot_variance_scree(

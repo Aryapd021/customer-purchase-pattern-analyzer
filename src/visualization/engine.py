@@ -267,62 +267,124 @@ class VisualizationEngine:
         self,
         similarity_matrix: np.ndarray,
         labels: Optional[np.ndarray] = None,
-        max_display: int = 50,
-        title: str = "Pairwise Cosine Similarity Heatmap (S = D^-1 * G * D^-1)",
+        customer_ids: Optional[List[str]] = None,
+        sort_by_cluster: bool = False,
+        max_display: Optional[int] = None,
+        title: str = "Pairwise Customer-to-Customer Cosine Similarity Heatmap",
+        colorscale: str = "Viridis",
         save_path: Optional[Union[str, Path]] = None,
     ) -> Tuple[plt.Figure, go.Figure]:
-        """Renders customer-by-customer cosine similarity matrix heatmap."""
-        m = similarity_matrix.shape[0]
-        display_m = min(m, max_display)
+        """Renders customer-by-customer cosine similarity matrix heatmap.
 
-        # Sort customers by cluster label if provided to highlight block diagonal structure
-        if labels is not None:
+        Guarantees a strictly square, 1:1 aspect-ratio customer-to-customer map.
+
+        Args:
+            similarity_matrix: Pairwise matrix S = D^-1 G D^-1 of shape (m, m).
+            labels: Optional cluster/archetype assignments for each customer.
+            customer_ids: Optional list of customer identifier strings.
+            sort_by_cluster: If True and labels given, sorts by cluster to reveal
+                block-diagonal structures. If False, preserves natural sequence.
+            max_display: Maximum number of customers to display. If None or >= m,
+                renders all m customers as a full square matrix.
+            title: Title for the heatmap plot.
+            colorscale: Color scale for Plotly heatmap (e.g. 'Viridis', 'Plasma').
+            save_path: Optional path to export figures (.png and .html).
+
+        Returns:
+            Tuple of (matplotlib.figure.Figure, plotly.graph_objects.Figure).
+        """
+        m = similarity_matrix.shape[0]
+        display_m = m if (max_display is None or max_display >= m) else max(2, int(max_display))
+
+        if customer_ids is not None and len(customer_ids) == m:
+            all_ids = [str(cid) for cid in customer_ids]
+        else:
+            all_ids = [f"Cust_{i+1:03d}" for i in range(m)]
+
+        # Determine ordering: natural sequence vs cluster sorted
+        if sort_by_cluster and labels is not None and len(labels) == m:
             sort_idx = np.argsort(labels)[:display_m]
         else:
             sort_idx = np.arange(display_m)
 
         S_sub = similarity_matrix[np.ix_(sort_idx, sort_idx)]
-        cust_ticks = [f"C_{i+1}" for i in sort_idx]
+        cust_ticks = [all_ids[i] for i in sort_idx]
 
-        # --- Matplotlib / Seaborn Heatmap ---
-        fig_mpl, ax = plt.subplots(figsize=(10, 8), dpi=150)
+        # --- Matplotlib / Seaborn Heatmap (Strictly Square 1:1) ---
+        fig_mpl, ax = plt.subplots(figsize=(10, 10), dpi=150)
+        show_ticks = display_m <= 40
+        cmap_name = colorscale.lower() if colorscale.lower() in ["viridis", "plasma", "inferno", "cividis", "magma", "blues"] else "viridis"
         sns.heatmap(
             S_sub,
-            cmap="viridis",
+            cmap=cmap_name,
             vmin=0.0,
             vmax=1.0,
+            square=True,
             ax=ax,
-            cbar_kws={"label": "Cosine Similarity cos(theta)"},
-            xticklabels=max_display <= 30,
-            yticklabels=max_display <= 30,
+            cbar_kws={"label": "Cosine Similarity cos(θ)", "shrink": 0.8},
+            xticklabels=cust_ticks if show_ticks else False,
+            yticklabels=cust_ticks if show_ticks else False,
         )
-        ax.set_title(title, fontsize=13, fontweight="bold", pad=12)
-        ax.set_xlabel("Customer Index", fontweight="bold")
-        ax.set_ylabel("Customer Index", fontweight="bold")
+        ax.set_title(f"{title} ({display_m} × {display_m} Square Matrix)", fontsize=13, fontweight="bold", pad=12)
+        ax.set_xlabel("Customer (B)", fontweight="bold")
+        ax.set_ylabel("Customer (A)", fontweight="bold")
+        if show_ticks:
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor", fontsize=8)
+            plt.setp(ax.get_yticklabels(), rotation=0, fontsize=8)
         plt.tight_layout()
 
         if save_path:
             p = Path(save_path)
             p.parent.mkdir(parents=True, exist_ok=True)
-            fig_mpl.savefig(p.with_suffix(".png"))
+            fig_mpl.savefig(p.with_suffix(".png"), bbox_inches="tight")
 
-        # --- Plotly Heatmap ---
+        # --- Plotly Heatmap (Strictly Square 1:1 Aspect Ratio) ---
+        hovertemplate = (
+            "<b>Customer A:</b> %{y}<br>"
+            "<b>Customer B:</b> %{x}<br>"
+            "<b>Cosine Similarity:</b> %{z:.4f}<extra></extra>"
+        )
         fig_plotly = go.Figure(
             data=go.Heatmap(
                 z=S_sub,
                 x=cust_ticks,
                 y=cust_ticks,
-                colorscale="Viridis",
+                colorscale=colorscale,
                 zmin=0.0,
                 zmax=1.0,
-                colorbar=dict(title="Cosine Sim"),
+                colorbar=dict(
+                    title=dict(text="Cosine<br>Similarity", side="right"),
+                    thickness=18,
+                    len=0.75,
+                ),
+                hovertemplate=hovertemplate,
             )
         )
         fig_plotly.update_layout(
-            title=title,
-            xaxis_title="Customer Index",
-            yaxis_title="Customer Index",
+            title=dict(
+                text=f"{title} ({display_m} × {display_m} Square Matrix)",
+                x=0.5,
+                xanchor="center",
+                font=dict(size=15),
+            ),
+            xaxis=dict(
+                title=dict(text="Customer B", font=dict(size=12, family="sans-serif")),
+                tickangle=-45 if display_m <= 40 else -90 if display_m <= 60 else 0,
+                showticklabels=display_m <= 60,
+                constrain="domain",
+            ),
+            yaxis=dict(
+                title=dict(text="Customer A", font=dict(size=12, family="sans-serif")),
+                scaleanchor="x",
+                scaleratio=1,
+                autorange="reversed",
+                showticklabels=display_m <= 60,
+                constrain="domain",
+            ),
+            width=760,
+            height=760,
             template="plotly_white",
+            margin=dict(l=60, r=60, t=70, b=60),
         )
 
         if save_path:

@@ -74,9 +74,14 @@ class TestVisualizationEngine:
 
     def test_plot_similarity_heatmap(self, engine, dummy_data, tmp_path):
         save_file = tmp_path / "heatmap"
+        m = dummy_data["sim_matrix"].shape[0]
+        test_ids = [f"CUST_{i+1:03d}" for i in range(m)]
+
         fig_mpl, fig_plotly = engine.plot_similarity_heatmap(
             similarity_matrix=dummy_data["sim_matrix"],
             labels=dummy_data["labels"],
+            customer_ids=test_ids,
+            sort_by_cluster=False,
             save_path=save_file,
         )
 
@@ -84,6 +89,15 @@ class TestVisualizationEngine:
         assert fig_plotly is not None
         assert (tmp_path / "heatmap.png").exists()
         assert (tmp_path / "heatmap.html").exists()
+
+        # Verify strict square aspect ratio
+        assert fig_plotly.layout.yaxis.scaleanchor == "x"
+        assert fig_plotly.layout.yaxis.scaleratio == 1
+        assert fig_plotly.layout.width == fig_plotly.layout.height
+
+        # Verify customer IDs are present
+        assert list(fig_plotly.data[0].x) == test_ids
+        assert list(fig_plotly.data[0].y) == test_ids
 
     def test_plot_variance_scree(self, engine, dummy_data, tmp_path):
         save_file = tmp_path / "scree"

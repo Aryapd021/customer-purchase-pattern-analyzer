@@ -458,19 +458,154 @@ with tabs[3]:
         """
     )
 
+    n_cust = results.ingestion.n_customers
+    cust_list = results.ingestion.customer_ids
+
+    # User Controls for Customer-to-Customer Square Heatmap
+    col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
+    with col_ctrl1:
+        scope_option = st.radio(
+            "Customer Matrix Scope",
+            ["All Customers (Full m × m Square)", "Focused Subset"],
+            index=0,
+            help="Choose whether to render all customers as a full square matrix or inspect a focused subset.",
+        )
+        if scope_option == "Focused Subset":
+            display_limit = st.slider(
+                "Number of Customers to Display",
+                min_value=min(5, n_cust),
+                max_value=n_cust,
+                value=min(40, n_cust),
+                step=1 if n_cust <= 20 else 5,
+            )
+        else:
+            display_limit = n_cust
+
+    with col_ctrl2:
+        sort_option = st.radio(
+            "Customer Ordering",
+            ["Natural Order (CUST_001, CUST_002, ...)", "Group by Behavioral Archetype"],
+            index=0,
+            help="Natural order preserves original customer sequence. Grouping by archetype reveals block-diagonal similarity clusters.",
+        )
+        sort_by_cluster = (sort_option == "Group by Behavioral Archetype")
+
+    with col_ctrl3:
+        palette_option = st.selectbox(
+            "Color Palette",
+            ["Viridis", "Plasma", "Cividis", "Inferno", "Blues", "Magma"],
+            index=0,
+        )
+
+    # Key Mathematical Metrics for Similarity
+    S_mat = results.similarity.cosine_similarity_matrix
+    off_diag = S_mat[~np.eye(n_cust, dtype=bool)] if n_cust > 1 else np.array([1.0])
+    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+    with m_col1:
+        st.metric("Matrix Dimensions", f"{display_limit} × {display_limit} (Square)")
+    with m_col2:
+        st.metric("Total Pairwise Comparisons", f"{display_limit * display_limit:,}")
+    with m_col3:
+        st.metric("Mean Off-Diagonal Cosine Sim", f"{float(np.mean(off_diag)):.4f}")
+    with m_col4:
+        st.metric("Min / Max Similarity", f"{float(np.min(off_diag)):.4f} / {float(np.max(S_mat)):.4f}")
+
+    # Render Strictly Square Plotly Heatmap
     _, fig_heat = viz.plot_similarity_heatmap(
         similarity_matrix=results.similarity.cosine_similarity_matrix,
         labels=results.profiling.labels,
-        max_display=min(60, results.ingestion.n_customers),
-        title="Pairwise Customer Cosine Similarity Matrix Heatmap",
+        customer_ids=results.ingestion.customer_ids,
+        sort_by_cluster=sort_by_cluster,
+        max_display=display_limit,
+        title="Pairwise Customer-to-Customer Cosine Similarity Heatmap",
+        colorscale=palette_option,
     )
-    st.plotly_chart(fig_heat, use_container_width=True)
 
-    with st.expander("Inspect Gram Matrix $G$ and Diagonal Norms $D$"):
+    # Center the square heatmap visually
+    c_pad1, c_plot, c_pad2 = st.columns([1, 10, 1])
+    with c_plot:
+        st.plotly_chart(fig_heat, use_container_width=False)
+
+    # Deep Customer-to-Customer Pairwise Analyzer
+    with st.expander("🔍 Deep Pairwise Customer-to-Customer Inspector", expanded=False):
+        st.markdown("Select any two customers to inspect their exact inner product, cosine angle, and category spend comparison:")
+        c_sel1, c_sel2 = st.columns(2)
+        with c_sel1:
+            cust_a = st.selectbox("Select Customer A", cust_list, index=0, key="heat_cust_a")
+        with c_sel2:
+            default_b_idx = min(1, len(cust_list) - 1)
+            cust_b = st.selectbox("Select Customer B", cust_list, index=default_b_idx, key="heat_cust_b")
+
+        idx_a = cust_list.index(cust_a)
+        idx_b = cust_list.index(cust_b)
+
+        sim_val = float(S_mat[idx_a, idx_b])
+        dot_prod = float(results.similarity.gram_matrix[idx_a, idx_b])
+        norm_a = float(results.similarity.vector_norms[idx_a])
+        norm_b = float(results.similarity.vector_norms[idx_b])
+        angle_rad = float(np.arccos(np.clip(sim_val, -1.0, 1.0)))
+        angle_deg = float(np.degrees(angle_rad))
+
+        profile_map = getattr(results.profiling, "customer_id_to_profile", {})
+        cluster_a = profile_map.get(cust_a, f"Cluster {results.profiling.labels[idx_a]}")
+        cluster_b = profile_map.get(cust_b, f"Cluster {results.profiling.labels[idx_b]}")
+
+        p1, p2, p3, p4 = st.columns(4)
+        with p1:
+            st.metric("Cosine Similarity S(A, B)", f"{sim_val:.4f}")
+        with p2:
+            st.metric("Angular Distance θ", f"{angle_deg:.2f}°")
+        with p3:
+            st.metric("Dot Product ⟨a_A, a_B⟩", f"{dot_prod:,.2f}")
+        with p4:
+            st.metric("Norms (||a_A||, ||a_B||)", f"{norm_a:.2f}, {norm_b:.2f}")
+
+        st.caption(f"**{cust_a}** Archetype: `{cluster_a}` | **{cust_b}** Archetype: `{cluster_b}`")
+
+        # Side-by-side spend comparison
+        spend_df = pd.DataFrame({
+            "Category": results.ingestion.category_names,
+            f"{cust_a} Spend ($)": results.ingestion.matrix[idx_a, :],
+            f"{cust_b} Spend ($)": results.ingestion.matrix[idx_b, :],
+            "Difference ($)": np.abs(results.ingestion.matrix[idx_a, :] - results.ingestion.matrix[idx_b, :]),
+        })
+        st.dataframe(spend_df, use_container_width=True)
+
+    with st.expander("📥 Download & Inspect Full Cosine Similarity Matrix S"):
+        df_sim_full = pd.DataFrame(
+            results.similarity.cosine_similarity_matrix,
+            index=results.ingestion.customer_ids,
+            columns=results.ingestion.customer_ids,
+        )
+        st.dataframe(df_sim_full.iloc[:15, :15], use_container_width=True)
+        st.download_button(
+            "📥 Download Complete Cosine Similarity Matrix S (CSV)",
+            data=df_sim_full.to_csv().encode("utf-8"),
+            file_name="pairwise_customer_cosine_similarity_matrix.csv",
+            mime="text/csv",
+            key="dl_sim_csv",
+        )
+
+    with st.expander("Inspect Gram Matrix G = AA^T and Diagonal Norms D"):
         st.write("Gram Matrix $G = A A^T$ (First 10 Customers):")
-        st.dataframe(pd.DataFrame(results.similarity.gram_matrix[:10, :10]), use_container_width=True)
+        st.dataframe(
+            pd.DataFrame(
+                results.similarity.gram_matrix[:10, :10],
+                index=cust_list[:10],
+                columns=cust_list[:10],
+            ),
+            use_container_width=True,
+        )
         st.write("Customer L2 Norms $D_{ii} = \\|\\mathbf{a}_i\\|_2$:")
-        st.dataframe(pd.DataFrame({"Customer": results.ingestion.customer_ids, "L2 Norm": results.similarity.vector_norms}).head(15))
+        st.dataframe(
+            pd.DataFrame(
+                {
+                    "Customer": results.ingestion.customer_ids,
+                    "L2 Norm (Magnitude)": results.similarity.vector_norms,
+                }
+            ).head(15),
+            use_container_width=True,
+        )
 
 # =============================================================================
 # TAB 5: Stage 4: Covariance & Spectral Decomposition (PCA)
